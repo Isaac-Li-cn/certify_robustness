@@ -1,12 +1,13 @@
 import torch
 
 device = torch.device('cuda:0')
-var = torch.rand([10, 2], device = device, requires_grad = True)
+var1 = torch.rand([10, 2], device = device, requires_grad = True)
+var2 = torch.rand([10, 2], device = device, requires_grad = True)
 
-print(var)
+#print(var)
 
-eps = var * var
+eps = torch.cat((var1, var2), 1)
 
 print(eps)
 
-print(eps.unsqueeze(1))
+#print(eps.unsqueeze(1))

@@ -48,7 +48,7 @@ def var_calc(mode, batch_size, in_dim, var_list, device):
         eps = var * var
     elif mode.lower() in ['asymmetric',]:
         var1, var2 = var_list
-        eps = var1 * var2
+        eps = torch.cat((var1, var2), 2)
     else:
         raise ValueError('Unrecognized mode: %s' % mode)
 
@@ -73,8 +73,7 @@ if __name__ == '__main__':
     parser.add_argument('--data', type = str, default = None,
         help = 'the data file to be loaded')
 
-    parser.add_argument('--batc
-    h_size', type = int, default = 10,
+    parser.add_argument('--batch_size', type = int, default = 10,
         help = 'the batch size, default = 10')
     parser.add_argument('--batch_num', type = int, default = 20,
         help = 'the number of batches, default = 20')
