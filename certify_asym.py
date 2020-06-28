@@ -1,3 +1,7 @@
+"""
+基于原来的certify改动，支持不平衡的情况，但是不支持平衡的情况了
+"""
+
 import os
 import sys
 sys.path.insert(0, './')
@@ -9,50 +13,31 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from util.models import MLP
+from util.model_asys import MLP
 from util.dataset import load_pkl, load_mnist, load_fmnist, load_svhn
 from util.device_parser import config_visible_gpu
 from util.param_parser import DictParser, ListParser, IntListParser
 
-def var_init(mode, batch_size, in_dim, init_value, device):
+def var_init(batch_size, in_dim, init_value1, init_value2, device):
     '''
     >>> initialize the bounds \\epsilon
     '''
-
-    if mode.lower() in ['uniform',]:
-        var = torch.zeros([batch_size, 1], device = device, requires_grad = True)
-        var.data.fill_(init_value)
-        var_list = [var,]
-    elif mode.lower() in ['nonuniform',]:
-        var = torch.zeros([batch_size, in_dim], device = device, requires_grad = True)
-        var.data.fill_(init_value)
-        var_list = [var,]
-    elif mode.lower() in ['asymmetric',]: # 先考虑一样的初始化
-        var1 = torch.zeros([batch_size, in_dim], device = device, requires_grad = True)
-        var2 = torch.zeros([batch_size, in_dim], device = device, requires_grad = True)
-        var1.data.fill_(init_value)
-        var2.data.fill_(init_value)
-        var_list = [var1, var2]
-    else:
-        raise ValueError('Unrecognized mode: %s' % mode)
+    var1 = torch.zeros([batch_size, in_dim], device = device, requires_grad = True)
+    var2 = torch.zeros([batch_size, in_dim], device = device, requires_grad = True)
+    var1.data.fill_(init_value1)
+    var2.data.fill_(init_value2)
+    var_list = [var1, var2]
 
     return var_list
 
-def var_calc(mode, batch_size, in_dim, var_list, device):
+def var_calc(batch_size, in_dim, var_list, device):
 
-    if mode.lower() in ['uniform',]:
-        var, = var_list
-        eps = var * var * torch.ones([batch_size, in_dim], device = device)
-    elif mode.lower() in ['nonuniform',]:
-        var, = var_list
-        eps = var * var
-    elif mode.lower() in ['asymmetric',]:
-        var1, var2 = var_list
-        eps = torch.cat((var1, var2), 0)
-    else:
-        raise ValueError('Unrecognized mode: %s' % mode)
 
-    return eps
+    var1, var2 = var_list
+    eps1 = var1 * var1
+    eps2 = var2 * var2
+
+    return eps1, eps2
 
 def clip_gradient(grad, length):
     '''
@@ -105,9 +90,11 @@ if __name__ == '__main__':
     parser.add_argument('--update_dual_freq', type = int, default = 5,
         help = 'the frequency of updating dual variable, default = 5')
 
-    parser.add_argument('--mode', type = str, default = 'nonuniform',
-        help = 'the type of the certified bound, default = "nonuniform", supported = ["nonuniform", "uniform","asymmetric"]')
-    parser.add_argument('--init_margin', type = float, default = 0.001,
+    # parser.add_argument('--mode', type = str, default = 'nonuniform',
+    #     help = 'the type of the certified bound, default = "nonuniform", supported = ["nonuniform", "uniform","asymmetric"]')
+    parser.add_argument('--init_margin1', type = float, default = 0.001,
+        help = 'the bound initialization, default = 0.001')
+    parser.add_argument('--init_margin2', type = float, default = 0.001,
         help = 'the bound initialization, default = 0.001')
     parser.add_argument('--norm', type = float, default = np.inf,
         help = 'the norm used for robustness, default = np.inf')
@@ -169,9 +156,10 @@ if __name__ == '__main__':
 
     # Configure the certification parameter
     # 这边初始化一些参数
-    init_value = np.sqrt(args.init_margin) # 初始化的 bound，是一个标量，也平方了。
+    init_value1 = np.sqrt(args.init_margin1) # 初始化的 bound，是一个标量，也平方了。
+    init_value2 = np.sqrt(args.init_margin2)
     norm = np.inf if args.norm <= 0 else args.norm
-    var_list = var_init(mode = args.mode, batch_size = args.batch_size, in_dim = args.in_dim, init_value = init_value, device = device)
+    var_list = var_init(batch_size = args.batch_size, in_dim = args.in_dim, init_value1 = init_value1, init_value2 = init_value2, device = device)
 
     # Information to be saved
     tosave = {'config': {kwarg: value for kwarg, value in args._get_kwargs()}, 'results': []}
@@ -192,7 +180,7 @@ if __name__ == '__main__':
         label_mask = torch.ones([args.batch_size, args.out_dim], device = device).scatter_(dim = 1, index = label_batch.view(args.batch_size, 1), value = 0) # 也是返回一个关于 label 的 mask
 
         # Reinitialize the variable
-        [p.data.fill_(init_value) for p in var_list] # 这个用法还是第一次看到，不过大概能猜到，这个意思应该是将 var_list 用 init_value 填充
+        [p.data.fill_(init_value1) for p in var_list] # 这个用法还是第一次看到，不过大概能猜到，这个意思应该是将 var_list 用 init_value 填充
         beta = args.beta # 这个 beta 给个了初始化，未来是随着迭代不断更新
         grad_clip = args.grad_clip # 选择是否用这个方法，防止梯度爆炸
         lam = torch.zeros([args.batch_size, args.out_dim], device = device, requires_grad = False)
@@ -209,15 +197,15 @@ if __name__ == '__main__':
         for iter_idx in range(args.max_iter):
 
             # 首先根据变量来计算 eps
-            eps = var_calc(mode = args.mode, batch_size = args.batch_size, in_dim = args.in_dim, var_list = var_list, device = device)
+            eps1, eps2 = var_calc(batch_size = args.batch_size, in_dim = args.in_dim, var_list = var_list, device = device)
 
-            low_bound, up_bound = model.bound(x = data_batch, ori_perturb_norm = norm, ori_perturb_eps = eps)
+            low_bound, up_bound = model.bound(x = data_batch, ori_perturb_norm = norm, ori_perturb_eps1 = eps1, ori_perturb_eps2 = eps2)
             low_true = low_bound.gather(1, label_batch.view(-1, 1)) # 获取真实标签
 
             err = low_true - up_bound - args.delta
             err = torch.min(err, - lam / beta) * label_mask
 
-            eps_loss = - torch.sum(torch.log(eps), dim = 1)
+            eps_loss = - torch.sum(torch.log(eps1) + torch.log(eps2), dim = 1)
             err_loss = torch.sum(lam * err, dim = 1) + beta / 2. * torch.norm(err, dim = 1) ** 2
 
             loss = torch.sum((eps_loss + err_loss) * result_mask) / torch.sum(result_mask)
@@ -242,11 +230,11 @@ if __name__ == '__main__':
                     grad_clip /= np.sqrt(args.inc_rate)
 
         # Small adjustment in the end
-        eps = var_calc(mode = args.mode, batch_size = args.batch_size, in_dim = args.in_dim, var_list = var_list, device = device)
+        eps1,eps2 = var_calc(batch_size = args.batch_size, in_dim = args.in_dim, var_list = var_list, device = device)
         shrink_times = 0
         while shrink_times < 1000:
 
-            low_bound, up_bound = model.bound(x = data_batch, ori_perturb_norm = norm, ori_perturb_eps = eps)
+            low_bound, up_bound = model.bound(x = data_batch, ori_perturb_norm = norm, ori_perturb_eps1 = eps1, ori_perturb_eps2 = eps2)
             low_true = low_bound.gather(1, label_batch.view(-1, 1))
             err = low_true - up_bound - args.delta
 
@@ -259,12 +247,12 @@ if __name__ == '__main__':
             shrink_times += 1
             err_sign = torch.sign(err_min)
             coeff = (1. - args.final_decay) / 2. * err_sign + (1. + args.final_decay) / 2.
-            eps.data = eps.data * coeff
+            eps1.data = eps1.data * coeff
+            eps2.data = eps2.data * coeff
 
         print('Shrink time = %d' % shrink_times)
 
-        tosave['results'].append({'data_batch': data_batch.data.cpu().numpy(), 'predict': predict.data.cpu().numpy(),
-            'label_batch': label_batch.data.cpu().numpy(), 'result_mask': result_mask.data.cpu().numpy(), 'eps': eps.data.cpu().numpy()})
+        tosave['results'].append({'data_batch': data_batch.data.cpu().numpy(), 'predict': predict.data.cpu().numpy(), 'label_batch': label_batch.data.cpu().numpy(), 'result_mask': result_mask.data.cpu().numpy(), 'eps1': eps1.data.cpu().numpy(), 'eps2': eps2.data.cpu().numpy()})
 
         if (batch_idx + 1) % 10 == 0:
             pickle.dump(tosave, open(args.out_file, 'wb'))

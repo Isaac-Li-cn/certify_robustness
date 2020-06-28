@@ -25,7 +25,7 @@ class Model(nn.Module, metaclass = ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def bound(self, x, ori_perturb_norm = np.inf, ori_perturb_eps = None):
+    def bound(self, x, ori_perturb_norm = np.inf, ori_perturb_eps1 = None, ori_perturb_eps2 = None):
         '''
         >>> do bound calculation
 
@@ -72,7 +72,7 @@ class MLP(Model):
 
         return out
 
-    def bound(self, x, ori_perturb_norm = np.inf, ori_perturb_eps = None):
+    def bound(self, x, ori_perturb_norm = np.inf, ori_perturb_eps1 = None, ori_perturb_eps2 = None):
 
         x = x.view(x.size(0), -1)
 
@@ -85,12 +85,9 @@ class MLP(Model):
         # Main Block
         for idx, layer in enumerate(self.main_block):
 
-            l, u, W_list, m1_list, m2_list = layer.bound(l = l, u = u, W_list = W_list, m1_list = m1_list, m2_list = m2_list,
-                ori_perturb_norm = ori_perturb_norm, ori_perturb_eps = ori_perturb_eps, first_layer = idx == 0)
+            l, u, W_list, m1_list, m2_list = layer.bound(l = l, u = u, W_list = W_list, m1_list = m1_list, m2_list = m2_list, ori_perturb_norm = ori_perturb_norm, ori_perturb_eps1 = ori_perturb_eps1, ori_perturb_eps2 = ori_perturb_eps2, first_layer = idx == 0)
 
         # Output
-        l, u, W_list, m1_list, m2_list = self.output.bound(l = l, u = u, W_list = W_list, m1_list = m1_list, m2_list = m2_list,
-            ori_perturb_norm = ori_perturb_norm, ori_perturb_eps = ori_perturb_eps, first_layer = len(self.hidden_dims) == 0)
+        l, u, W_list, m1_list, m2_list = self.output.bound(l = l, u = u, W_list = W_list, m1_list = m1_list, m2_list = m2_list, ori_perturb_norm = ori_perturb_norm, ori_perturb_eps1 = ori_perturb_eps1, ori_perturb_eps2 = ori_perturb_eps2, first_layer = len(self.hidden_dims) == 0)
 
         return l, u
-
