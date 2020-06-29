@@ -59,9 +59,10 @@ if __name__ == '__main__':
         for batch_idx in range(batch_num):
             data_batch = bound_info['results'][batch_idx]['data_batch']
             result_mask = bound_info['results'][batch_idx]['result_mask']
-            eps_batch = bound_info['results'][batch_idx]['eps']
+            eps1_batch = bound_info['results'][batch_idx]['eps1']
+            eps2_batch = bound_info['results'][batch_idx]['eps2']
 
-            for p_idx, (data, result, eps) in enumerate(zip(data_batch, result_mask, eps_batch)):
+            for p_idx, (data, result, eps1, eps2) in enumerate(zip(data_batch, result_mask, eps1_batch, eps2_batch)):
                 # 注意，这边的eps变了
                 if result == 0:
                     continue
@@ -74,10 +75,10 @@ if __name__ == '__main__':
 
                 plt.scatter([data[0],], [data[1],], s = 3, color = 'b')
                 plt.text(x = data[0] + 1e-2, y = data[1] + 1e-2, s = str(np.sum(counts)), color = 'b', fontsize = 5)
-                plt.plot([data[0] - eps[0], data[0] - eps[0]], [data[1] - eps[1], data[1] + eps[1]], color = file_color)
-                plt.plot([data[0] + eps[0], data[0] + eps[0]], [data[1] - eps[1], data[1] + eps[1]], color = file_color)
-                plt.plot([data[0] - eps[0], data[0] + eps[0]], [data[1] - eps[1], data[1] - eps[1]], color = file_color)
-                plt.plot([data[0] - eps[0], data[0] + eps[0]], [data[1] + eps[1], data[1] + eps[1]], color = file_color)
+                plt.plot([data[0] - eps1[0], data[0] - eps1[0]], [data[1] - eps1[1], data[1] + eps2[1]], color = file_color) # 4 2
+                plt.plot([data[0] + eps2[0], data[0] + eps2[0]], [data[1] - eps1[1], data[1] + eps2[1]], color = file_color) # 2 2
+                plt.plot([data[0] - eps1[0], data[0] + eps2[0]], [data[1] - eps1[1], data[1] - eps1[1]], color = file_color) # 4 2
+                plt.plot([data[0] - eps1[0], data[0] + eps2[0]], [data[1] + eps2[1], data[1] + eps2[1]], color = file_color)
         print('counts', counts)
 
     plt.xticks([-1., 0., 1.])
