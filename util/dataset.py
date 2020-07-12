@@ -36,11 +36,11 @@ def mnist(batch_size, batch_size_test, horizontal_flip = False, random_clip = Fa
 
     train_set = datasets.MNIST(root = './data', train = True, download = True,
         transform = transforms.Compose(data_augumentation + basic_transform))
-    train_loader = torch.utils.data.DataLoader(train_set, batch_size = batch_size, shuffle = True, num_workers = 4, pin_memory = True)
+    train_loader = torch.utils.data.DataLoader(train_set, batch_size = batch_size, shuffle = True,  pin_memory = True)
 
     test_set = datasets.MNIST(root = './data', train = False, download = True,
         transform = transforms.Compose(basic_transform))
-    test_loader = torch.utils.data.DataLoader(test_set, batch_size = batch_size_test, shuffle = False, num_workers = 4, pin_memory = True)
+    test_loader = torch.utils.data.DataLoader(test_set, batch_size = batch_size_test, shuffle = False,  pin_memory = True)#windows下的多线程读取有点问题
 
     return train_loader, test_loader
 

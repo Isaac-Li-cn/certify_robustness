@@ -27,12 +27,6 @@ def var_init(mode, batch_size, in_dim, init_value, device):
         var = torch.zeros([batch_size, in_dim], device = device, requires_grad = True)
         var.data.fill_(init_value)
         var_list = [var,]
-    elif mode.lower() in ['asymmetric',]: # 先考虑一样的初始化
-        var1 = torch.zeros([batch_size, in_dim], device = device, requires_grad = True)
-        var2 = torch.zeros([batch_size, in_dim], device = device, requires_grad = True)
-        var1.data.fill_(init_value)
-        var2.data.fill_(init_value)
-        var_list = [var1, var2]
     else:
         raise ValueError('Unrecognized mode: %s' % mode)
 
@@ -140,6 +134,7 @@ if __name__ == '__main__':
         use_gpu = False
 
     if args.data is None and args.dataset.lower() in ['syn',]:
+        #如果是别的数据集，就不需要从本地读取数据了
         raise ValueError('you should specify the input data')
     if args.out_file is None:
         raise ValueError('you should specify the output folder')
@@ -160,7 +155,7 @@ if __name__ == '__main__':
         raise ValueError('Unrecognized dataset: %s' % args.dataset.lower())
 
     # Model configuration
-    # 加载先前训练好的一个模型
+    # 加载先前训练好的一个模型，这个模型要和原来的模型一致
     model = MLP(in_dim = args.in_dim, hidden_dims = args.hidden_dims, out_dim = args.out_dim, nonlinearity = args.nonlinearity)
     model = model.cuda(device) if use_gpu else model
     ckpt = torch.load(args.model2load)
@@ -263,8 +258,7 @@ if __name__ == '__main__':
 
         print('Shrink time = %d' % shrink_times)
 
-        tosave['results'].append({'data_batch': data_batch.data.cpu().numpy(), 'predict': predict.data.cpu().numpy(),
-            'label_batch': label_batch.data.cpu().numpy(), 'result_mask': result_mask.data.cpu().numpy(), 'eps': eps.data.cpu().numpy()})
+        tosave['results'].append({'data_batch': data_batch.data.cpu().numpy(), 'predict': predict.data.cpu().numpy(), 'label_batch': label_batch.data.cpu().numpy(), 'result_mask': result_mask.data.cpu().numpy(), 'eps': eps.data.cpu().numpy()})
 
         if (batch_idx + 1) % 10 == 0:
             pickle.dump(tosave, open(args.out_file, 'wb'))

@@ -5,7 +5,7 @@ import torch.nn as nn
 import numpy as np
 
 from abc import ABCMeta, abstractmethod
-from .modules_asym import FCLayer, ReLULayer, SigdLayer, TanhLayer, ArctanLayer
+from .modules import FCLayer, ReLULayer, SigdLayer, TanhLayer, ArctanLayer
 from .utility import reduced_bv_bm, reduced_bm_bv
 
 str2func = {'relu': ReLULayer, 'tanh': TanhLayer, 'sigd': SigdLayer, 'arctan': ArctanLayer}
