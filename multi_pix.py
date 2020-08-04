@@ -121,9 +121,6 @@ if __name__ == '__main__':
         help = 'choose which gpu to use, default = "0"')
     parser.add_argument('--out_file', type = str, default = None,
         help = 'the output file')
-    parser.add_argument('--add_eps', type = str, default = None,
-        help = 'the file including eps if needed')
-    parser.add_argument('--times', type = int, default = 1, help = 'the times to optim')
 
     args = parser.parse_args()
     config_visible_gpu(args.gpu)
@@ -171,138 +168,14 @@ if __name__ == '__main__':
     norm = np.inf if args.norm <= 0 else args.norm
     var_list = var_init(mode = args.mode, batch_size = args.batch_size, in_dim = args.in_dim, init_value = init_value, device = device)
 
-    # 改变到临界值，首先导入文件
-    # if args.add_eps is not None:
-    #     file_data = pickle.load(open(args.add_eps, 'rb'))
-    #     results_old = file_data['results']
-    #     # print(results_old)
-
     # Information to be saved
     tosave = {'config': {kwarg: value for kwarg, value in args._get_kwargs()}, 'results': []}
 
-    # 累计的eps，使用一个变量去约束
-    eps_add = torch.zeros([args.batch_num, args.batch_size, args.in_dim], device = device, requires_grad = True)
+    # 对每个batch进行计算
+    for batch_idx in range(args.batch_num):
 
-    #迭代优化
+        print('batch %d / %d' % (batch_idx, args.batch_num))
 
-    for opt_idx in range(args.times):
+        data_batch, label_batch = next(data_loader) # data_loader 里面存放了batch的大小
 
-        print(opt_idx)
-
-        # 对每个batch进行计算
-        for batch_idx in range(args.batch_num):
-
-            print('batch %d / %d' % (batch_idx, args.batch_num))
-
-            data_batch, label_batch = next(data_loader) # data_loader 里面存放了batch的大小
-            #print(data_batch.shape)
-            # for i in range(10):
-            #     data_batch[i][500] = 255
-            print(data_batch)
-
-            data_batch = data_batch.cuda(device) if use_gpu else data_batch # 优先加载到gpu上
-
-            change = eps_add[batch_idx]
-            print(change)
-            # data_batch = data_batch.cuda(device)
-            data_batch = data_batch + change
-            print(data_batch)
-
-            label_batch = label_batch.cuda(device) if use_gpu else label_batch
-            data_batch = data_batch.view(data_batch.size(0), -1) # 按第一列的值标准化，防止出问题
-
-            logits = model(data_batch) # 对 data_batch 进行预测，得到预测结果，这里是概率
-            _, predict = torch.max(logits, dim = 1) # 得到预测结果
-            result_mask = (predict == label_batch).float() # 这里用一个掩码来做预测了，得到了对应一个 batch 的结果
-            # print(result_mask)
-            label_mask = torch.ones([args.batch_size, args.out_dim], device = device).scatter_(dim = 1, index = label_batch.view(args.batch_size, 1), value = 0) # 也是返回一个关于 label 的 mask
-
-            # Reinitialize the variable
-            [p.data.fill_(init_value) for p in var_list] # 这个用法还是第一次看到，不过大概能猜到，这个意思应该是将 var_list 用 init_value 填充
-            beta = args.beta # 这个 beta 给个了初始化，未来是随着迭代不断更新
-            grad_clip = args.grad_clip # 选择是否用这个方法，防止梯度爆炸
-            lam = torch.zeros([args.batch_size, args.out_dim], device = device, requires_grad = False)
-
-            # 选择优化器
-            if args.optim.lower() in ['sgd',]:
-                optim = torch.optim.SGD(var_list, lr = args.lr)
-            elif args.optim.lower() in ['adam',]:
-                optim = torch.optim.Adam(var_list, lr = args.lr)
-            else:
-                raise ValueError('Unrecognized Optimizer: %s' % args.optim.lower())
-
-
-            # 开始训练
-            for iter_idx in range(args.max_iter):
-
-                # if opt_idx > 0:
-                #     # change = results_old[batch_idx]['eps']
-                #     change = eps_add
-                #     print(change)
-                #     data_batch = data_batch + change
-                #     print(data_batch)
-
-                # 首先根据变量来计算 eps
-                eps = var_calc(mode = args.mode, batch_size = args.batch_size, in_dim = args.in_dim, var_list = var_list, device = device)
-
-                low_bound, up_bound = model.bound(x = data_batch, ori_perturb_norm = norm, ori_perturb_eps = eps)
-                low_true = low_bound.gather(1, label_batch.view(-1, 1)) # 获取真实标签
-
-                err = low_true - up_bound - args.delta #在文中为v
-                err = torch.min(err, - lam / beta) * label_mask #这边已经把y算进去了
-
-                eps_loss = - torch.sum(torch.log(eps), dim = 1) #公式(6)第一项
-                err_loss = torch.sum(lam * err, dim = 1) + beta / 2. * torch.norm(err, dim = 1) ** 2 #公式(6)第二项第三项
-
-                loss = torch.sum((eps_loss + err_loss) * result_mask) / torch.sum(result_mask)
-                eps_v = torch.sum(eps_loss * result_mask) / torch.sum(result_mask)
-                if iter_idx % 10 == 0:
-                    print(batch_idx, iter_idx, beta, eps_v.data.cpu().numpy(), (loss - eps_v).data.cpu().numpy())
-
-                optim.zero_grad() #把梯度置0，重新算梯度
-                loss.backward()
-                # Gradient Clip
-                if args.grad_clip is not None:
-                    for var in var_list:
-                        var.grad.data = clip_gradient(var.grad.data, length = grad_clip)
-                optim.step() #算法第4行
-
-                if (iter_idx + 1) % args.update_dual_freq == 0:
-                    lam.data = lam.data + beta * err #算法第5行
-
-                if iter_idx + 1 > args.inc_min and (iter_idx + 1 - args.inc_min) % args.inc_freq == 0:
-                    beta *= args.inc_rate
-                    if args.grad_clip is not None:
-                        grad_clip /= np.sqrt(args.inc_rate)
-
-            # Small adjustment in the end
-            eps = var_calc(mode = args.mode, batch_size = args.batch_size, in_dim = args.in_dim, var_list = var_list, device = device)
-            shrink_times = 0
-            while shrink_times < 1000:
-
-                low_bound, up_bound = model.bound(x = data_batch, ori_perturb_norm = norm, ori_perturb_eps = eps)
-                low_true = low_bound.gather(1, label_batch.view(-1, 1))
-                err = low_true - up_bound - args.delta
-
-                err_min, _ = torch.min(err * label_mask + 1e-10, dim = 1, keepdim = True)
-                err_min = err_min * result_mask.view(-1, 1) + 1e-10
-
-                if float(torch.min(err_min).data.cpu().numpy()) > 0:
-                    break
-
-                shrink_times += 1
-                err_sign = torch.sign(err_min)
-                coeff = (1. - args.final_decay) / 2. * err_sign + (1. + args.final_decay) / 2.
-                eps.data = eps.data * coeff #算法第8行
-
-            print('Shrink time = %d' % shrink_times)
-
-            # print(eps)
-            eps_add[batch_idx] = eps_add[batch_idx] + eps
-
-            tosave['results'].append({'data_batch': data_batch.data.cpu().numpy(), 'predict': predict.data.cpu().numpy(), 'label_batch': label_batch.data.cpu().numpy(), 'result_mask': result_mask.data.cpu().numpy(), 'eps': eps.data.cpu().numpy()})
-
-            if (batch_idx + 1) % 10 == 0:
-                pickle.dump(tosave, open(args.out_file, 'wb'))
-
-        pickle.dump(tosave, open(args.out_file, 'wb'))
+        print

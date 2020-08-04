@@ -114,8 +114,8 @@ def quad_bound_calc(W_list, m1_list, m2_list, ori_perturb_norm = None, ori_pertu
     if ori_perturb_norm != None:
         primal_norm = ori_perturb_norm
         dual_norm = 1. / (1. - 1. / primal_norm)
-        print(W_list[0].size())
-        print(ori_perturb_eps.shape)
+        # print(W_list[0].size())
+        # print(ori_perturb_eps.shape)
         up_bound = torch.norm(W_list[0] * ori_perturb_eps.unsqueeze(1), dim = 2, p = dual_norm)         # of shape [batch_size, out_dim]
         low_bound = - up_bound
 

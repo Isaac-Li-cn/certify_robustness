@@ -1,0 +1,1 @@
+python certify_add_eps.py --dataset mnist --out_file iter7_2 --in_dim 784 --model2load ./output/mnist.ckpt --add_eps1 iter1 --add_eps2 iter2 --add_eps3 iter3 --add_eps4 iter4 --add_eps5 iter5 --add_eps6 iter6
